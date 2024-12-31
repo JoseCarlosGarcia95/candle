@@ -41,23 +41,6 @@ fn weight_quant(x: &Tensor) -> Result<Tensor> {
     Ok(u)
 }
 
-fn activation_quant(x: &Tensor) -> Result<Tensor> {
-    let scale = (127.0
-        / x.abs()?
-            .max(D::Minus1)?
-            .max(D::Minus1)?
-            .clamp(1e-5, f32::INFINITY)?)?
-            .to_dtype(x.dtype())?;
-
-    let y = x
-            .broadcast_mul(&scale.unsqueeze(D::Minus1)?.unsqueeze(D::Minus1)?)?
-            .clamp(-128.0, 127.0)?
-            .broadcast_div(&scale)?;
-
-    Ok(y)
-}
-
-
 impl BitLinear {
     pub fn new(weight: Tensor, bias: Option<Tensor>) -> Self {
         let weight = weight_quant(&weight).unwrap();
@@ -71,6 +54,14 @@ impl BitLinear {
     pub fn bias(&self) -> Option<&Tensor> {
         self.bias.as_ref()
     }
+}
+fn activation_quant(x: &Tensor) -> Result<Tensor> {
+    let scale = x.abs()?.max_keepdim(D::Minus1)?.clamp(1e-5, f32::INFINITY)?;
+    let scale = (127.0 / scale)?;
+
+    let y = (x.broadcast_mul(&scale))?.round()?.clamp(-128., 127.)?.broadcast_div(&scale)?;
+
+    Ok(y)
 }
 
 impl super::Module for BitLinear {
